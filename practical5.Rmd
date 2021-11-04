@@ -1,0 +1,222 @@
+---
+  title: "practical5"
+author: "Jingran"
+date: "03/11/2021"
+output: html_document
+---
+  
+  #note:
+  bedroom is at ward - convert to borough
+could also probably just use local area district data
+hotel is points - summarise over borough
+airbnb is points - summarise over borough
+
+```{r library}
+##Load all our data
+library(sf)
+library(tmap)
+library(tmaptools)
+library(tidyverse)
+library(here)
+library(janitor)
+```
+
+```{r wards etc}
+
+Londonborough <- st_read(here::here("data",
+                                    "ESRI", 
+                                    "London_Borough_Excluding_MHW.shp"))%>%
+  st_transform(., 27700) %>% 
+  clean_names()
+
+Londonwards <- st_read(here("data",
+                            "ESRI",
+                            "London_Ward.shp"))%>%  
+  st_transform(., 27700) %>% 
+  clean_names()
+```
+
+```{r accomocation data}
+OSM <- st_read(here::here("data",
+                          "London", 
+                          "gis_osm_pois_a_free_1.shp")) %>%
+  st_transform(., 27700) %>%
+  #select hotels only
+  filter(fclass == 'hotel') %>% 
+  clean_names()
+
+
+
+
+Airbnb <- read_csv("data/listings.csv") %>%
+  st_as_sf(., coords = c("longitude", "latitude"), 
+           crs = 4326) %>%
+  st_transform(., 27700)%>%
+  #select entire places that are available all year
+  filter(room_type == 'Entire home/apt' & availability_365 =='365') %>% 
+  clean_names()
+
+
+
+Worldcities <- st_read(here::here("data",
+                                  "cities", 
+                                  "World_Cities.shp")) %>%
+  st_transform(., 27700) %>% 
+  clean_names()
+
+ward_beds <- read_csv(here::here("data/ward_bedrooms.csv"))%>%
+  clean_names()
+```
+
+```{r bed to borough}
+beds_borough <- Londonwards %>% 
+  left_join(.,
+            ward_beds,
+            by = c ("gss_code" = "geography_code")) %>% 
+  group_by(lb_gss_cd) %>% 
+  summarise(total_beds_per_borough=sum(bedrooms_all_categories_number_of_bedrooms_measures_value, na.rm=TRUE)) %>% 
+  st_drop_geometry()
+
+```
+
+#summaries() has grouped output by "1b_gss_cd". you can override using the group argument
+```{r airbnb_borough}
+Airbnb_borough <- Airbnb %>%
+  #filter(room_type == 'Entire home/apt' & availability_365 =='365')
+  filter(room_type == 'Entire home/apt')%>%
+  filter(availability_365 =='365')%>%
+  st_join(Londonborough,.) %>% 
+  group_by(gss_code) %>% 
+  summarise(airbnbcount=n()) %>% 
+  st_drop_geometry()
+```
+
+```{r OSM_hotels}
+OSM_hotels<- OSM %>% 
+  filter(fclass == "hotel") %>% 
+  st_join(Londonborough,.) %>% 
+  group_by(gss_code) %>% 
+  summarise(hotelcount = n()) %>% 
+  st_drop_geometry()
+```
+
+```{r all together}
+all_data_one <- Londonborough %>% 
+  left_join(.,
+            beds_borough,
+            by = c("gss_code"="lb_gss_cd"))
+
+all_data_two <- all_data_one %>%
+  left_join(.,
+            Airbnb_borough,
+            by = c("gss_code" = "gss_code"))
+
+all_data_three <- all_data_two %>%
+  left_join(.,
+            OSM_hotels,
+            by = c("gss_code" = "gss_code"))
+
+mapnorm <- all_data_three %>%
+  mutate(airbnb_norm=airbnbcount/total_beds_per_borough)%>%
+  mutate(hotelnorm=hotelcount/total_beds_per_borough)
+
+```
+
+```{r extra_info}
+Worldcities_extract <-  Worldcities %>% 
+  clean_names() %>% 
+  filter(cntry_name=="United Kingdom") %>% 
+  filter(city_name == "London" | city_name== "Birmingham" | city_name=="Edinburgh")
+
+UK_outline <- st_read(here::here("data", 
+                                 "uk outline", 
+                                 "Counties_and_Unitary_Authorities_(April_2019)_Boundaries_UK_BFE.shp")) %>%
+  st_transform(., 27700)
+```
+
+```{r mapping}
+tmap_mode("plot")
+
+#breaks <- c(0,5,12,26,57,286)
+
+tmap_mode("plot")
+tm1 <- tm_shape(mapnorm)+
+  tm_polygons("airbnb_norm",
+              style="jenks",
+              palette = "PuBu")+
+  tm_legend(show= FALSE)+
+  tm_layout(frame=FALSE)+
+  tm_credits("(a)", position=c(0,0.85), size=1.5)
+tm1
+```
+
+
+```{r mapping}
+tmap_mode("plot")
+tm2<-tm_shape(mapnorm)+
+  tm_polygons("hotelnorm",
+              style="jenks",
+              palette="PuBu")+
+  tm_legend(show=FALSE)+
+  tm_layout(frame=FALSE)+
+  tm_credits("(b)", position=c(0,0.85), size=1.5)
+tm2
+```
+
+
+```{r mapping}
+newbb <- c(xmin=-296000, ymin=5408, xmax=655696, ymax=1000000) 
+
+UK_outlinecrop <- UK_outline$geometry %>%
+  st_crop(., newbb)
+
+tmap_mode("plot")
+tm3<-tm_shape(UK_outlinecrop)+
+  tm_polygons(col="darkslategray1")+
+  tm_layout(frame=FALSE)+
+  tm_shape(Worldcities_extract)+
+  tm_symbols(col="red", scale=.5)+
+  tm_text("city_name", xmod=-1, y=-0.5)
+tm3
+```
+
+
+```{r mapping}
+legend <- tm_shape(mapnorm)+
+  tm_polygons("hotelnorm",
+              style="jenks",
+              palette="PuBu")+
+  tm_scale_bar(position=c(0.2,0.04), text.size=0.6)+
+  tm_compass(north=0, position=c(0.65,0.6))+
+  tm_layout(legend.only = TRUE, legend.position=c(0.2,0.25), asp=0.1)+
+  tm_credits("(c) OpenStreetMap contrbutors and Air b n b", position=c(0.0,0.0))
+t=tmap_arrange(tm1, tm2, tm3, legend, ncol=2)
+t
+```
+
+```{r}
+tmap_save(t, 'hotelsandairbnbR.png')
+
+library(grid)
+grid.newpage()
+
+pushViewport(viewport(layout=grid.layout(2,2)))
+print(tm1, vp=viewport(layout.pos.col=1, layout.pos.row=1, height=5))
+print(tm2, vp=viewport(layout.pos.col=2, layout.pos.row=1, height=5))
+print(tm3, vp=viewport(layout.pos.col=1, layout.pos.row=2, height=5))
+print(legend, vp=viewport(layout.pos.col=2, layout.pos.row=2, height=5))
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
