@@ -193,10 +193,7 @@ legend <- tm_shape(mapnorm)+
 t=tmap_arrange(tm1, tm2, tm3, legend, ncol=2)
 t
 ```
-
 ```{r}
-tmap_save(t, 'hotelsandairbnbR.png')
-
 library(grid)
 grid.newpage()
 
@@ -205,6 +202,40 @@ print(tm1, vp=viewport(layout.pos.col=1, layout.pos.row=1, height=5))
 print(tm2, vp=viewport(layout.pos.col=2, layout.pos.row=1, height=5))
 print(tm3, vp=viewport(layout.pos.col=1, layout.pos.row=2, height=5))
 print(legend, vp=viewport(layout.pos.col=2, layout.pos.row=2, height=5))
+```
+
+```{r}
+Londonbb = st_bbox(mapnorm)%>%
+    st_as_sfc()
+
+tmmain<- tm_shape(mapnorm, bbox=Londonbb)+
+  tm_polygons("airbnb_norm", 
+              style="jenks", 
+              palette="PuBu")+
+  tm_scale_bar(position = c("left", "bottom"), text.size = .75)+
+  tm_layout(legend.position =c(0.65,0.9), 
+            legend.text.size=.65, 
+            legend.title.size = 1.1,
+            frame=FALSE)+
+  tm_credits("(c) OpenStreetMap contrbutors and Air b n b", position=c(0.0,0.0))+
+  tm_compass(type = "8star", position = c(0.06, 0.1))+
+  #tm_layout(inner.margins=0)
+  tm_layout(inner.margin=c(0.04,0.04,0.04,0.4))
+
+
+
+inset <- tm_shape(UK_outlinecrop)+
+  tm_polygons(col="darkslategray1", lwd=1)+
+  tm_shape(Londonbb)+
+  tm_borders(col="grey40", lwd = 3)+
+  tm_layout(frame=FALSE, bg.color="transparent")+
+  tm_shape(Worldcities_extract)+
+  tm_symbols(col = "red", scale = .5)+
+  tm_text("city_name", xmod=-1.5, ymod=-0.5)
+
+
+tmmain
+print(inset,  vp = viewport(0.86, 0.29, width = 0.5, height = 0.55))
 
 
 ```
