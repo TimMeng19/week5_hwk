@@ -4,6 +4,7 @@ author: "Jingran"
 date: "03/11/2021"
 output: html_document
 ---
+  oh sweet lord
   
   #note:
   bedroom is at ward - convert to borough
@@ -139,7 +140,7 @@ tmap_mode("plot")
 
 #breaks <- c(0,5,12,26,57,286)
 
-tmap_mode("plot")
+tmap_mode("plot").xc
 tm1 <- tm_shape(mapnorm)+
   tm_polygons("airbnb_norm",
               style="jenks",
